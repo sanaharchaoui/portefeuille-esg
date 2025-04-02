@@ -1,88 +1,106 @@
-
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import yfinance as yf
+import numpy as np
 
-# =======================
-# Données temps réel via yfinance
-# =======================
-tickers = {
-    "Ørsted": "ORSTED.CO",
-    "Vestas": "VWS.CO",
-    "Schneider Electric": "SU.PA",
-    "Microsoft": "MSFT",
-    "AXA": "CS.PA"
-}
-
-data = yf.download(list(tickers.values()), period="1d", interval="1d")["Close"].iloc[-1]
-actions = pd.DataFrame({
-    "Entreprise": list(tickers.keys()),
-    "Ticker": list(tickers.values()),
-    "Prix (€)": [round(p, 2) for p in data],
-})
-actions["Quantité"] = (10000 // actions["Prix (€)"]).astype(int)
-actions["Investi (€)"] = actions["Quantité"] * actions["Prix (€)"]
-
-# Obligations (valeur estimée à 100€)
-obligations = pd.DataFrame({
-    "Titre": [
-        "OAT Verte 2039",
-        "BEI CAB",
-        "Banque Mondiale GB",
-        "Apple Green Bond",
-        "Iberdrola Green Bond"
+# ======================
+# Simulations de données ESG & Actifs durables
+# ======================
+actifs = pd.DataFrame({
+    "Nom": [
+        "Ørsted", "Vestas", "Schneider Electric", "Microsoft", "AXA",
+        "Fonds ISR A", "ETF Green Equity", "Green Bond Apple", "Obligation OAT Verte", "Fonds ISR B"
     ],
-    "Prix (€)": [100] * 5,
-    "Quantité": [100] * 5
+    "Type": [
+        "Action", "Action", "Action", "Action", "Action",
+        "Fonds", "ETF", "Obligation", "Obligation", "Fonds"
+    ],
+    "Secteur": [
+        "Énergie", "Énergie", "Industrie", "Technologie", "Finance",
+        "Mixte", "Technologie", "Technologie", "Public", "Mixte"
+    ],
+    "Région": [
+        "Europe", "Europe", "Europe", "Amérique", "Europe",
+        "Global", "Global", "Amérique", "Europe", "Global"
+    ],
+    "Score ESG": [
+        9.2, 8.5, 9.5, 8.7, 7.1,
+        8.8, 8.9, 8.6, 8.3, 9.0
+    ],
+    "ISIN": [
+        "ORSTED.CO", "VWS.CO", "SU.PA", "MSFT", "CS.PA",
+        "ISR001", "ETF001", "OBL001", "OBL002", "ISR002"
+    ]
 })
-obligations["Investi (€)"] = obligations["Prix (€)"] * obligations["Quantité"]
 
-# =======================
-# Interface Streamlit
-# =======================
-st.set_page_config(page_title="Portefeuille ESG", layout="wide")
-st.title("🌱 Portefeuille Durable (Actions + Obligations Vertes)")
+# Récupération des prix pour les actions/ETF avec yfinance
+tickers = actifs[actifs["Type"].isin(["Action", "ETF"])]
+data = yf.download(list(tickers["ISIN"]), period="5y", interval="1d")["Close"]
 
-# Résumé portefeuille
-st.header("📊 Répartition du portefeuille")
-col1, col2 = st.columns(2)
+# Simule un portefeuille égalitaire pour tous les actifs
+actifs["Poids"] = 1 / len(actifs)
 
+# ======================
+# Interface utilisateur Streamlit
+# ======================
+st.set_page_config(page_title="Portefeuille ESG Avancé", layout="wide")
+st.title("🌱 Portefeuille Durable (Actions, Fonds, Obligations, ETF)")
+
+# Filtres ESG
+st.sidebar.header("🔍 Filtres ESG")
+types = st.sidebar.multiselect("Type d’actif", actifs["Type"].unique(), default=actifs["Type"].unique())
+secteurs = st.sidebar.multiselect("Secteur", actifs["Secteur"].unique(), default=actifs["Secteur"].unique())
+scores = st.sidebar.slider("Score ESG minimum", 0.0, 10.0, 7.0, 0.1)
+
+actifs_filtrés = actifs[(actifs["Type"].isin(types)) &
+                        (actifs["Secteur"].isin(secteurs)) &
+                        (actifs["Score ESG"] >= scores)]
+
+# ======================
+# Affichage portefeuille filtré
+# ======================
+st.header("📋 Portefeuille filtré")
+st.dataframe(actifs_filtrés)
+
+# ======================
+# Reporting ESG
+# ======================
+st.header("📊 Reporting ESG")
+
+col1, col2, col3 = st.columns(3)
+
+# Répartition par secteur
 with col1:
-    st.subheader("Actions durables")
-    st.dataframe(actions)
-    total_actions = actions["Investi (€)"].sum()
-    st.metric("Montant total en actions", f"{total_actions:,.2f} €")
+    secteur_data = actifs_filtrés.groupby("Secteur")["Poids"].sum()
+    fig1, ax1 = plt.subplots()
+    ax1.pie(secteur_data, labels=secteur_data.index, autopct="%1.1f%%")
+    ax1.set_title("Répartition par secteur")
+    st.pyplot(fig1)
 
+# Score ESG moyen pondéré
 with col2:
-    st.subheader("Obligations vertes")
-    st.dataframe(obligations)
-    total_oblig = obligations["Investi (€)"].sum()
-    st.metric("Montant total en obligations", f"{total_oblig:,.2f} €")
+    esg_moyen = np.average(actifs_filtrés["Score ESG"], weights=actifs_filtrés["Poids"])
+    st.metric("Score ESG moyen pondéré", f"{esg_moyen:.2f}/10")
 
-# Camembert
-fig, ax = plt.subplots()
-ax.pie([total_actions, total_oblig], labels=["Actions", "Obligations"], autopct="%1.1f%%", startangle=90)
-ax.axis("equal")
-st.pyplot(fig)
+# Répartition géographique
+with col3:
+    region_data = actifs_filtrés.groupby("Région")["Poids"].sum()
+    fig2, ax2 = plt.subplots()
+    ax2.bar(region_data.index, region_data.values)
+    ax2.set_title("Répartition géographique")
+    st.pyplot(fig2)
 
-# =======================
-# Fiches ESG (extraites du rapport)
-# =======================
-st.header("📌 Fiches ESG des actifs")
-with st.expander("📈 Ørsted (énergie renouvelable)"):
-    st.write("Best-in-class, notée AAA MSCI. Production éolienne offshore. Impact direct sur le climat.")
+# ======================
+# Performance passée (actions + ETF)
+# ======================
+st.header("📈 Performance passée des actifs sélectionnés")
+if not data.empty:
+    selected_isins = actifs_filtrés[actifs_filtrés["Type"].isin(["Action", "ETF"])]
+    perf_data = data[selected_isins["ISIN"]].dropna()
+    perf_norm = perf_data / perf_data.iloc[0] * 100
+    st.line_chart(perf_norm)
+else:
+    st.warning("Les données de performance ne sont pas disponibles actuellement.")
 
-with st.expander("⚙️ Schneider Electric (industrie durable)"):
-    st.write("Entreprise la plus durable 2025. Automatisation & efficacité énergétique. MSCI AAA.")
-
-with st.expander("💻 Microsoft (technologie verte)"):
-    st.write("Cloud 100% renouvelable d'ici 2025. Objectif 'Carbon Negative'. Inclusivité forte.")
-
-with st.expander("🌍 OAT Verte France"):
-    st.write("Obligation souveraine verte. Financement de projets publics (transports, bâtiments verts).")
-
-with st.expander("🏛️ BEI / Banque Mondiale"):
-    st.write("Obligations vertes d'institutions AAA. Financement global de projets verts dans les pays en développement.")
-
-st.info("💡 Ce portefeuille est réparti à parts égales entre 5 actions best-in-class et 5 obligations vertes labellisées.")
+st.caption("Données ESG simulées — pour projet pédagogique uniquement")
