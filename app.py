@@ -98,9 +98,11 @@ st.header("📈 Performance passée des actifs sélectionnés")
 if not data.empty:
     selected_isins = actifs_filtrés[actifs_filtrés["Type"].isin(["Action", "ETF"])]
     perf_data = data[selected_isins["ISIN"]].dropna()
-    perf_norm = perf_data / perf_data.iloc[0] * 100
-    st.line_chart(perf_norm)
+
+    if not perf_data.empty:
+        perf_norm = perf_data / perf_data.iloc[0] * 100
+        st.line_chart(perf_norm)
+    else:
+        st.warning("Aucune donnée de performance disponible pour les actifs sélectionnés.")
 else:
     st.warning("Les données de performance ne sont pas disponibles actuellement.")
-
-st.caption("Données ESG simulées — pour projet pédagogique uniquement")
